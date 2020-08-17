@@ -7,6 +7,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.nio.file.Files
 
+// TODO (#3): Write more tests for IndexManager
 class IndexManagerTest {
   @get:Rule
   val tempDir = TemporaryFolder()

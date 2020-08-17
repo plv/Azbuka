@@ -30,7 +30,7 @@ class IndexManager(private val index: TokenIndex, private val store: InodeStore)
   init {
     /*
      * Setup responses to `FileTracker` events.
-     * TODO: Batch these events so that we have more coarse-grained insertions into InodeStore.
+     * TODO (#2): Batch these events so that we have more coarse-grained insertions into InodeStore.
      */
     tracker = FileTracker(scope = IndexingScope)
       .onCreate { affectedPath, associatedDir ->

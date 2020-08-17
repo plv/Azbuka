@@ -13,7 +13,7 @@ import java.nio.file.attribute.BasicFileAttributes
   Inode represents some filesystem object that we're interested in tracking or indexing. Its subtypes (Document, Directory)
   and wrappers (StoredInode<T : Inode>) form a base framework for the rest of the library.
  */
-// TODO:  Storing a Tokenizable in each Directory and Document is a bad idea. It wastes space with no real time benefits
+// TODO (#1):  Storing a Tokenizable in each Directory and Document is a bad idea. It wastes space with no real time benefits
 // (esp. if API users may supply a tokenizer that is not a singleton). Also, this can leak if we accidentally keep
 // references to a Tokenizable that is also a Document, even after we remove the Document from the DocumentStore.
 // I'm crunched for time as of writing this comment, but the smarter thing to do would be to dynamic dispatch

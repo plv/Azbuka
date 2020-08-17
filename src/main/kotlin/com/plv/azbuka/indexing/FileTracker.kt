@@ -18,7 +18,7 @@ import java.nio.file.attribute.BasicFileAttributes
  *    File tracking service based on Java's WatchService. Has added functionality for filtering and tracking individual
  *    files. Has a simple event-based dispatching setting API.
  *
- *    TODO: Refactor FileTracker + integrate it with Inodes, so that it's not accessing raw paths.
+ *    TODO (#2): Refactor FileTracker + integrate it with Inodes, so that it's not accessing raw paths.
  *    Loosely based on https://github.com/vishna/watchservice-ktx/
  */
 class FileTracker(scope: CoroutineScope = GlobalScope, private val trackingDelayMs: Long = 500L) {
@@ -127,7 +127,7 @@ class FileTracker(scope: CoroutineScope = GlobalScope, private val trackingDelay
 
           ExtendedWatchEventKind.ENTRY_RENAME_FROM,
           ExtendedWatchEventKind.ENTRY_RENAME_TO -> {
-            // TODO: Implement ENTRY_RENAME events
+            // TODO (#2): Implement ENTRY_RENAME events
           }
           ExtendedWatchEventKind.KEY_INVALID -> {
             // Key invalid = tracked directory delete
