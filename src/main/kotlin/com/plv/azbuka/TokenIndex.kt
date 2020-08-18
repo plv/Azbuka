@@ -1,8 +1,5 @@
-package com.plv.azbuka.indexing
+package com.plv.azbuka
 
-import com.plv.azbuka.InodeStore
-import com.plv.azbuka.com.plv.bukva.Document
-import com.plv.azbuka.com.plv.bukva.Inode
 import com.plv.azbuka.tokenization.StringToken
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read

@@ -1,8 +1,5 @@
 package com.plv.azbuka
 
-import com.plv.azbuka.com.plv.bukva.Document
-import com.plv.azbuka.indexing.DocId
-import com.plv.azbuka.indexing.TokenIndex
 import com.plv.azbuka.tokenization.PlainTextTokenizer
 import com.plv.azbuka.tokenization.StringToken
 import org.junit.Assert.assertEquals

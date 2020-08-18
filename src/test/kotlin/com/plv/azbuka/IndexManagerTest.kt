@@ -1,7 +1,7 @@
 package com.plv.azbuka
 
-import com.plv.azbuka.com.plv.bukva.Document
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder

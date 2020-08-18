@@ -1,10 +1,6 @@
 package com.plv.azbuka
 
 
-import com.plv.azbuka.com.plv.bukva.Directory
-import com.plv.azbuka.com.plv.bukva.Document
-import com.plv.azbuka.com.plv.bukva.Inode
-import com.plv.azbuka.indexing.DocId
 import java.io.FileNotFoundException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files

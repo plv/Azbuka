@@ -1,2 +1,2 @@
-rootProject.name = "Bukva"
+rootProject.name = "Azbuka"
 

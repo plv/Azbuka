@@ -1,10 +1,5 @@
 package com.plv.azbuka
 
-import com.plv.azbuka.com.plv.bukva.Directory
-import com.plv.azbuka.com.plv.bukva.Document
-import com.plv.azbuka.com.plv.bukva.Inode
-import com.plv.azbuka.indexing.FileTracker
-import com.plv.azbuka.indexing.TokenIndex
 import com.plv.azbuka.tokenization.PlainTextTokenizer
 import com.plv.azbuka.tokenization.StringToken
 import kotlinx.coroutines.*

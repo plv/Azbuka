@@ -1,4 +1,4 @@
-package com.plv.azbuka.com.plv.bukva
+package com.plv.azbuka
 
 import com.plv.azbuka.tokenization.PlainTextTokenizer
 import com.plv.azbuka.tokenization.StringToken

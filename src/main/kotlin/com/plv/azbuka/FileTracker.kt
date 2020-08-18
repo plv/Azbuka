@@ -1,4 +1,4 @@
-package com.plv.azbuka.indexing
+package com.plv.azbuka
 
 import kotlinx.coroutines.*
 import name.pachler.nio.file.*
@@ -224,7 +224,12 @@ class FileTracker(scope: CoroutineScope = GlobalScope, private val trackingDelay
     if (
       filesTrackedByParent != null &&
       filesTrackedByParent.isEmpty() &&
-      trackedDirectories.containsValue(TrackedDirectory(path.parent, false))
+      trackedDirectories.containsValue(
+        TrackedDirectory(
+          path.parent,
+          false
+        )
+      )
     ) {
       parentDirsToFiles.remove(path.parent)
     }
