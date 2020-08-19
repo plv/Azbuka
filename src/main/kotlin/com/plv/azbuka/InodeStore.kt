@@ -5,6 +5,7 @@ import java.io.FileNotFoundException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
@@ -23,13 +24,13 @@ import kotlin.concurrent.write
 class InodeStore {
   private val inodes: MutableMap<StoredInode.Identifier, StoredInode<out Inode>> = mutableMapOf()
 
-  private val directoriesToDocuments: MutableMap<DocId, MutableList<DocId>> = mutableMapOf()
+  private val directoriesToDocuments: MutableMap<DocId, MutableSet<DocId>> = mutableMapOf()
 
   private val idCounter: AtomicInteger = AtomicInteger(0)
   private val lock: ReentrantReadWriteLock = ReentrantReadWriteLock()
 
   // For use by IndexManager
-  val readLock = lock.readLock()
+  val readLock: ReentrantReadWriteLock.ReadLock = lock.readLock()
 
   /*
    * Logical size of store (i.e. how many **unique** Inodes are stored)
@@ -83,7 +84,7 @@ class InodeStore {
 
       get<Directory>(doc.path.parent)?.let {
         if (directoriesToDocuments[it.id] == null) {
-          directoriesToDocuments[it.id] = mutableListOf(id)
+          directoriesToDocuments[it.id] = mutableSetOf(id)
         } else {
           directoriesToDocuments[it.id]!!.add(id)
         }
@@ -95,88 +96,94 @@ class InodeStore {
 
   /*
    * Inserts a Directory into the InodeStore, as well as inserting any children Inode belonging to the directory on disk.
-   * Returns a Pair containing the now inserted StoredDirectory and a Set containing immediate (non-recursive) children.
+   * Returns a Pair containing the now inserted StoredDirectory and a Set containing a recursive set of all children.
    *
    * Behavior notes:
    *  - An already-existing child Inode will not be re-inserted and will not inherit this parent's new Tokenizer.
    *  - The returned set of children does **not** only include children that were added during this traversal. It
    *    includes previously-inserted children as well.
    */
-  fun add(dir: Directory): Pair<StoredInode<in Directory>, Set<StoredInode<in Inode>>> {
+  fun add(dir: Directory): Pair<StoredInode<Inode>, Set<StoredInode<Inode>>> {
     // It's possible that there are duplicates. For example, a file can be added, and now its parent is being added too.
     // Or, children of parentDir could have been added to the store while we are traversing it. We can filter the
     // duplicates out once we acquire the lock. For now, let's just create the inner `Inode`s, so that we avoid
     // needlessly incrementing idCounter.
-    val childInodes: MutableSet<Inode> = mutableSetOf()
+    val childInodes: MutableMap<Directory, MutableList<Inode>> = mutableMapOf()
+    val currentParentDirectory: LinkedList<Directory> = LinkedList()
 
     dir.walkContents {
       preVisitDirectory {
-        if (it != dir.path) {
-          val subDirStored = add(Directory(it, tokenizer))
-          // The subdirectory and its children are now stored, but we also want to associate the parent dir with its
-          // immediate subdir.
-          childInodes.add(subDirStored.first.reify<Directory>().inode)
+        if (it.fileName.toString().startsWith(".")) {
+          return@preVisitDirectory FileVisitResult.SKIP_SUBTREE
         }
-        // Skip because we already
-        FileVisitResult.SKIP_SUBTREE
+        currentParentDirectory.push(Directory(it, tokenizer))
+        childInodes[currentParentDirectory.peek()] = mutableListOf()
+        FileVisitResult.CONTINUE
       }
 
       visitFile {
         if (it.fileName.toString().startsWith(".")) {
           return@visitFile FileVisitResult.CONTINUE
         }
-        childInodes.add(Document(it))
+        val filetype = Files.probeContentType(it)
+        // probeContentType returns null for various text/xml files, so let's assume that a null content
+        // type is text.
+        val isBinary = filetype?.startsWith("application/") ?: false
+        if (!isBinary) {
+          childInodes.getValue(currentParentDirectory.peek()).add(Document(it))
+        }
+        FileVisitResult.CONTINUE
+      }
+
+      postVisitDirectory {
+        val oldFront = currentParentDirectory.pop()
+        if (currentParentDirectory.isNotEmpty()) {
+          childInodes.getValue(currentParentDirectory.peek()).add(oldFront)
+        }
         FileVisitResult.CONTINUE
       }
     }
 
     lock.write {
-      val parent =  get<Directory>(dir.path) ?: {
-        val storedParent = StoredInode(idCounter.getAndIncrement(),
-          Directory(dir.path, dir.tokenizer)
-        )
-        inodes[StoredInode.Identifier.PathId(storedParent.inode.path)] = storedParent
-        inodes[StoredInode.Identifier.IntId(storedParent.id)] = storedParent
-        directoriesToDocuments[storedParent.id] = mutableListOf()
-        storedParent
-      }()
-
-      // Remove duplicates, as individual files may have been added to the store during traversal
-      val inodesToStore = childInodes
-        .map {
-          get(it.path) ?: StoredInode(
-            idCounter.getAndIncrement(),
-            when (it) {
-              is Document -> Document(
-                it.path,
-                it.tokenizer
-              )
-              is Directory -> Directory(
-                it.path,
-                it.tokenizer
-              )
-            }
-          )
+      val dirStored = getOrStore(dir)
+      val allRecursiveChildren = childInodes.flatMapTo(mutableSetOf()) {
+        val parent = getOrStore(it.key)
+        it.value.mapTo(mutableSetOf()) {
+          val child = getOrStore(it)
+          if (directoriesToDocuments[parent.id]?.add(child.id) == null) {
+            directoriesToDocuments[parent.id] = mutableSetOf(child.id)
+          }
+          child
         }
-
-      inodesToStore.forEach {
-        inodes[StoredInode.Identifier.PathId(it.inode.path)] = it
-        inodes[StoredInode.Identifier.IntId(it.id)] = it
-
-        directoriesToDocuments.getValue(parent.id).add(it.id)
       }
-
-      val children = directoriesToDocuments[parent.id]!!.mapTo(mutableSetOf()) { get<Inode>(it)!! }
-      return Pair(parent, children)
+      return Pair(dirStored, allRecursiveChildren)
     }
+  }
+
+  /*
+   * Performs a "get or insert" operation on an inode.
+   */
+  private fun getOrStore(inode: Inode): StoredInode<Inode> = lock.write {
+    get(inode.path) ?: {
+      val _stored = StoredInode(
+        idCounter.getAndIncrement(),
+        when (inode) {
+          is Document -> Document(inode.path, inode.tokenizer)
+          is Directory -> Directory(inode.path, inode.tokenizer)
+        }
+      )
+      inodes[StoredInode.Identifier.PathId(_stored.inode.path)] = _stored
+      inodes[StoredInode.Identifier.IntId(_stored.id)] = _stored
+      _stored
+    }()
   }
 
   /*
    * Bulk add: provides course grained, atomic insertion of many documents.
    */
   fun addAll(docs: Set<Document>): List<StoredInode<Document>> = lock.write { docs.map { add(it) } }
-  fun addAll(dirs: Set<Directory>): Map<StoredInode<in Directory>, Set<StoredInode<in Inode>>> =
-    lock.write { dirs.map { add(it) }.associateBy({ it.first }, { it.second }) }
+  fun addAll(dirs: Set<Directory>): Map<StoredInode<Directory>, Set<StoredInode<Inode>>> =
+    lock.write { dirs.map { add(it) }.associateBy({ it.first.reify<Directory>() }, { it.second }) }
 
   /* Removal */
 
@@ -211,13 +218,13 @@ class InodeStore {
   fun remove(doc: StoredInode<Document>): Document? = lock.write {
     val inode = inodes.remove(StoredInode.Identifier.IntId(doc.id))
     inode?.also {
-        inodes.remove(StoredInode.Identifier.PathId(it.inode.path))
-      }?.also {
-        val parent = get<Directory>(it.inode.path.parent)
-        if (parent != null) {
-          directoriesToDocuments[parent.id]?.remove(it.id)
-        }
-      }?.reify<Document>()?.inode
+      inodes.remove(StoredInode.Identifier.PathId(it.inode.path))
+    }?.also {
+      val parent = get<Directory>(it.inode.path.parent)
+      if (parent != null) {
+        directoriesToDocuments[parent.id]?.remove(it.id)
+      }
+    }?.reify<Document>()?.inode
   }
 
   /*
@@ -227,7 +234,7 @@ class InodeStore {
    * StoredInode acts as a sort of "receipt" type: other APIs use it as a guarantee that, at some point, the wrapped
    * Inode's path was stored and validated in InodeStore.
    */
-  data class StoredInode<T : Inode> internal constructor(val id: Int, val inode: T) {
+  data class StoredInode<T : Inode> internal constructor(val id: DocId, val inode: T) {
     fun <U : Inode> reify(): StoredInode<U> = this as StoredInode<U>
 
     sealed class Identifier {

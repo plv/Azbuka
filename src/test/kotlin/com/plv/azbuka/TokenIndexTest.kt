@@ -100,6 +100,10 @@ class TokenIndexTest {
     )
     assertEquals(
       setOf<DocId>(),
+      index.searchAndConsecutive(listOf(StringToken("Hello"), StringToken("name")))
+    )
+    assertEquals(
+      setOf<DocId>(),
       index.searchAndConsecutive(
         listOf(
           StringToken("Hello"),

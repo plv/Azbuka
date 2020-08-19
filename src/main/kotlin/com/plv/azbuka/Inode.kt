@@ -3,6 +3,7 @@ package com.plv.azbuka
 import com.plv.azbuka.tokenization.PlainTextTokenizer
 import com.plv.azbuka.tokenization.StringToken
 import com.plv.azbuka.tokenization.Tokenizable
+import java.io.IOException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
@@ -36,29 +37,40 @@ data class Directory(override val path: Path, override val tokenizer: Tokenizabl
   fun walkContents(traverse: Directory.() -> Unit) {
     this.traverse()
     Files.walkFileTree(path, object : SimpleFileVisitor<Path>() {
-      override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-        traverseFns[TraverseEvent.PreVisitDirectory]?.also { it(dir) }
-        return FileVisitResult.CONTINUE
-      }
+      override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
+        traverseFns[TraverseEvent.PreVisitDirectory]?.let { it(dir) } ?: FileVisitResult.CONTINUE
 
-      override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-        traverseFns[TraverseEvent.VisitFile]?.also { it(file) }
-        return FileVisitResult.CONTINUE
+      override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult =
+        traverseFns[TraverseEvent.VisitFile]?.let { it(file) } ?: FileVisitResult.CONTINUE
+
+      override fun postVisitDirectory(dir: Path?, exc: IOException?): FileVisitResult {
+        return traverseFns[TraverseEvent.PostVisitDirectory]?.let {
+          if (dir != null) {
+            return@let it(dir)
+          }
+          return@let FileVisitResult.CONTINUE
+        } ?: FileVisitResult.CONTINUE
       }
     })
-  }
-
-  fun visitFile(event: (Path) -> FileVisitResult) {
-    this.traverseFns[TraverseEvent.VisitFile] = event
   }
 
   fun preVisitDirectory(event: (Path) -> FileVisitResult) {
     this.traverseFns[TraverseEvent.PreVisitDirectory] = event
   }
 
+  fun postVisitDirectory(event: (Path) -> FileVisitResult) {
+    this.traverseFns[TraverseEvent.PostVisitDirectory] = event
+  }
+
+  fun visitFile(event: (Path) -> FileVisitResult) {
+    this.traverseFns[TraverseEvent.VisitFile] = event
+  }
+
+
   enum class TraverseEvent {
     VisitFile,
     PreVisitDirectory,
+    PostVisitDirectory,
   }
 }
 

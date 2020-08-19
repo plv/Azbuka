@@ -2,14 +2,12 @@ package com.plv.azbuka.tokenization
 
 object PlainTextTokenizer : StreamingTokenizer {
   override fun toTokens(str: String): List<StringToken> {
-    return str.split(" ")
-      .filter { !it.isStopWord() }
-      .map {
-        val processedString = it
-          .filter { c -> c.isLetterOrDigit() }
-          .toLowerCase()
-        StringToken(processedString)
-      }
+    return str
+      .split(Regex("[^a-zA-Z\\d]"))
+      .asSequence()
+      .map { StringToken(it.toLowerCase()) }
+      .filter { it.representation.isNotBlank() && !it.representation.isStopWord() }
+      .toList()
   }
 
   private fun String.isStopWord(): Boolean {
@@ -24,7 +22,7 @@ object PlainTextTokenizer : StreamingTokenizer {
       "in",
       "that",
       "have",
-      "I"
+      "i"
     )
   }
 }

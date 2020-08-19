@@ -15,10 +15,11 @@ import kotlin.concurrent.withLock
       `InodeStore`-provided `Document`s
  *  - Routing FileTracker events to appropriate `InodeStore` and `TokenIndex` operations
  */
+val IndexingScope: CoroutineScope = CoroutineScope(newFixedThreadPoolContext(64, "azbuka-indexing"))
+
 class IndexManager(private val index: TokenIndex, private val store: InodeStore) {
   private val tracker: FileTracker
 
-  private val IndexingScope: CoroutineScope = CoroutineScope(newFixedThreadPoolContext(4, "azbuka-indexing"))
 
   constructor() : this(TokenIndex(), InodeStore())
 
@@ -84,21 +85,16 @@ class IndexManager(private val index: TokenIndex, private val store: InodeStore)
     val childInsertedDocuments =
       storedDir.second.filter { it.inode is Document }.map { it.reify<Document>() }
 
-    val job = IndexingScope.launch {
-      val deferredTokenizations = withContext(Dispatchers.IO) {
-        childInsertedDocuments.map { async { it.inode.toTokens() } }
+    val indexingJob = IndexingScope.launch {
+      val deferredTokenizations = childInsertedDocuments.map {
+        async { index.add(it, it.inode.toTokens()) }
       }
-      val tokenizations =
-        childInsertedDocuments.zip(deferredTokenizations.awaitAll()).associateBy({ it.first }, { it.second })
-
-      index.addAll(tokenizations)
+      deferredTokenizations.awaitAll()
     }
-
+    runBlocking { indexingJob.join() }
     if (shouldTrack) {
-      tracker.track(dir.path)
+      tracker.track(storedDir.first.inode.path)
     }
-
-    runBlocking { job.join() }
     return storedDir.first.reify()
   }
 
@@ -147,10 +143,10 @@ class IndexManager(private val index: TokenIndex, private val store: InodeStore)
    */
   fun search(query: String): Set<Document> = store.readLock.withLock {
     val tokenized = PlainTextTokenizer.toTokens(query)
-    val ids = if (' ' in query) {
-      index.searchAndConsecutive(tokenized)
-    } else {
-      index.search(tokenized.first())
+    val ids = when (tokenized.size) {
+      0 -> return setOf()
+      1 -> index.search(tokenized.first())
+      else -> index.searchAndConsecutive(tokenized)
     }
     store.getAll(ids).asSequence().filterNotNull().map { it.reify<Document>().inode }.toSet()
   }
@@ -165,7 +161,7 @@ class IndexManager(private val index: TokenIndex, private val store: InodeStore)
     store.getAll(ids).asSequence().filterNotNull().map { it.reify<Document>().inode }.toSet()
   }
 
-  fun searchAndConsecutive(terms: List<StringToken>): Set<Document>  = store.readLock.withLock {
+  fun searchAndConsecutive(terms: List<StringToken>): Set<Document> = store.readLock.withLock {
     val ids = index.searchAndConsecutive(terms)
     store.getAll(ids).asSequence().filterNotNull().map { it.reify<Document>().inode }.toSet()
   }
